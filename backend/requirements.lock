@@ -3,5 +3,7 @@ uvicorn==0.34.0
 python-multipart==0.0.20
 PyMuPDF==1.25.3
 Pillow==11.1.0
+packaging==24.1
+pytesseract==0.3.13
 pytest==8.3.4
 httpx==0.28.1

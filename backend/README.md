@@ -18,10 +18,10 @@ On Windows PowerShell, activate with `.\.venv\Scripts\Activate.ps1`. The applica
 Optional capabilities are deliberately separate from the basic text-PDF path:
 
 ```bash
-python -m pip install -e ".[ocr,vision]"
+python -m pip install -e ".[vision]"
 ```
 
-The `ocr` extra installs the Python wrapper, but the Tesseract executable must also be installed and available on `PATH`. If either part is missing, analysis continues with text-layer detections and reports a clear OCR-unavailable warning. The `vision` extra enables best-effort QR and face boxes at low confidence; it is not required for text redaction.
+The locked requirements already install the `pytesseract` Python wrapper. The Tesseract executable must also be installed and available on `PATH`. On Windows, run `winget install --id UB-Mannheim.TesseractOCR -e`; on Ubuntu/Debian, run `sudo apt-get install tesseract-ocr`; on macOS, run `brew install tesseract`. If either OCR component is missing, analysis continues with text-layer detections and reports a clear OCR-unavailable warning. The `vision` extra enables best-effort QR and face boxes at low confidence; it is not required for text redaction.
 
 When OCR is requested for an image-only page and is unavailable, analysis returns the warning but export returns a clear `503` instead of presenting an unchanged image as safely redacted. Text PDFs with a usable text layer remain usable without OCR.
 
@@ -64,7 +64,7 @@ The suite uses generated in-memory PDFs and does not require Tesseract, OpenCV, 
 
 ## Docker
 
-The included image supports the base text-PDF and Pillow flows. OCR remains optional and reports its unavailable status unless a Tesseract runtime is added to the image.
+The included image installs the Tesseract runtime and supports the OCR flow as well as the base text-PDF and Pillow flows.
 
 ```bash
 docker build -t privashield-backend .

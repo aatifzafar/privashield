@@ -13,6 +13,7 @@ dependencies = [
   "python-multipart==0.0.20",
   "PyMuPDF==1.25.3",
   "Pillow==11.1.0",
+  "pytesseract==0.3.13",
 ]
 
 [project.optional-dependencies]

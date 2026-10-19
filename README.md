@@ -56,13 +56,13 @@ The backend test suite is offline-friendly and generates its own PDFs. Frontend 
 
 ### Tesseract (OCR)
 
-Text PDFs work with the base backend dependencies. Scanned PDFs and images need the optional `pytesseract` Python package plus the Tesseract executable. Install the Python extra from `backend/`:
+Text PDFs work with the base backend dependencies. Scanned PDFs and images need the `pytesseract` Python package plus the Tesseract executable. The locked backend requirements install the Python wrapper; install the native executable for your platform:
 
 ```bash
-python -m pip install -e ".[ocr]"
+python -m pip install -r requirements.txt
 ```
 
-Then install Tesseract using the platform package manager: Ubuntu/Debian `sudo apt-get install tesseract-ocr`; macOS `brew install tesseract`; Windows install the official Tesseract package. Add its install directory to `PATH`, or set `PRIVASHIELD_TESSERACT_CMD` in `backend/.env` to the full path of `tesseract.exe` (for example `C:\\Program Files\\Tesseract-OCR\\tesseract.exe`). Restart the backend after changing this. The app reports OCR-unavailable instead of silently claiming a scan was covered.
+Then install Tesseract using the platform package manager: Ubuntu/Debian `sudo apt-get install tesseract-ocr`; macOS `brew install tesseract`; Windows PowerShell `winget install --id UB-Mannheim.TesseractOCR -e`. Restart the terminal and verify with `tesseract --version`. If Windows installed it outside the current `PATH`, set `PRIVASHIELD_TESSERACT_CMD` in `backend/.env` to the full path of `tesseract.exe` (for example `C:\\Program Files\\Tesseract-OCR\\tesseract.exe`), then restart the backend. The app reports OCR-unavailable instead of silently claiming a scan was covered.
 
 Optional QR/face heuristics use `python -m pip install -e ".[vision]"` and are always marked low confidence.
 
@@ -153,7 +153,7 @@ Never use this prototype as the sole control for high-impact identity decisions.
 
 ## Docker
 
-The two folders are independently containerizable. Use `backend/Dockerfile` for the API and `frontend/Dockerfile` for the static UI. The backend image intentionally does not bundle Tesseract by default; add it in a deployment-specific image if OCR is required.
+The two folders are independently containerizable. Use `backend/Dockerfile` for the API and `frontend/Dockerfile` for the static UI. The backend image installs both the Python OCR wrapper and the Debian `tesseract-ocr` executable, so the Docker flow supports OCR without host PATH configuration.
 
 ```bash
 docker build -t privashield-backend ./backend

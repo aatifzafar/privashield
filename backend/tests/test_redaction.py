@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import io
+
 import fitz
+from PIL import Image
 
 from app.services.analyzer import analyze_document
 from app.services.detectors import Detection
-from app.services.redaction import apply_keep_last_n, redact_pdf, verify_export
-from tests.conftest import make_pdf
+from app.services.redaction import apply_keep_last_n, redact_image, redact_pdf, verify_export
+from tests.conftest import make_pdf, make_png
 
 
 def test_pdf_redaction_removes_text_raw_bytes_metadata_and_annotations() -> None:
@@ -43,3 +46,14 @@ def test_keep_last_n_adjusts_only_the_leading_part_of_a_detection_box() -> None:
     partial = apply_keep_last_n(finding, 4)
     assert partial.bbox == (10, 20, 70.0, 40)
     assert apply_keep_last_n(finding, None).bbox == finding.bbox
+
+
+def test_image_partial_mask_differs_from_full_redaction() -> None:
+    finding = Detection("pan", 1, (20, 20, 220, 80), 0.9, "ocr", "ABCDE1234F", "finding-0001")
+    source = make_png()
+    fully_redacted = redact_image(source, "image/png", [finding])
+    partially_redacted = redact_image(source, "image/png", [apply_keep_last_n(finding, 4)])
+
+    with Image.open(io.BytesIO(fully_redacted)) as full, Image.open(io.BytesIO(partially_redacted)) as partial:
+        assert full.getpixel((180, 50)) == (0, 0, 0)
+        assert partial.getpixel((180, 50)) == (255, 255, 255)

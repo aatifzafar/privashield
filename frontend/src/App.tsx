@@ -34,7 +34,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -197,6 +196,7 @@ function App() {
     setExported(null)
     setSelectedPage(1)
     setImageSize(null)
+    setFlattenToImage(false)
     setWorkflowStep('upload')
     setManualMode(false)
   }, [clearFeedback, previewAsset])
@@ -247,9 +247,18 @@ function App() {
       const result = await api.export({
         session_id: sessionId,
         use_ocr: useOcr,
-        flatten_to_image: flattenToImage,
+        flatten_to_image: report?.document_type === 'pdf' && flattenToImage,
         keep_last_n: keepLastN,
-        findings: findings.map(({ id, page, bbox, decision, manual, keepLastN: findingKeepLastN }) => ({ id, page, bbox, decision, manual, keep_last_n: findingKeepLastN })),
+        findings: findings.map(({ id, page, bbox, decision, manual, keepLastN: findingMask }) => ({
+          id,
+          page,
+          bbox,
+          decision,
+          manual,
+          // The global checkbox enables/disables masking; the finding value
+          // identifies detections eligible for partial identifier masking.
+          keep_last_n: findingMask && keepLastN !== null ? keepLastN : undefined,
+        })),
       })
       setExported({ blob: result.blob, filename: result.filename })
       downloadBlob(result.blob, result.filename)
@@ -421,6 +430,7 @@ function App() {
                 <aside className="space-y-5">
                   <DetectionPanel
                     findings={findings}
+                    maskLastN={keepLastN}
                     selectedFindingId={selectedFindingId}
                     onSelect={selectFinding}
                     onDecision={updateDecision}
@@ -430,6 +440,7 @@ function App() {
                   <ExportPanel
                     flattenToImage={flattenToImage}
                     setFlattenToImage={setFlattenToImage}
+                    documentType={report.document_type}
                     keepLastN={keepLastN}
                     setKeepLastN={setKeepLastN}
                     busy={busy}
@@ -458,13 +469,18 @@ function App() {
 
 function BeforeAfterPreview({ file, previewAsset, sessionId, page, documentType, exported }: { file: File; previewAsset: PreviewAsset | null; sessionId: string | null; page: number; documentType: DocumentType; exported: { blob: Blob; filename: string } }) {
   const [zoom, setZoom] = useState(100)
-  const afterUrl = useMemo(() => URL.createObjectURL(exported.blob), [exported.blob])
+  const [afterUrl, setAfterUrl] = useState<string | null>(null)
   const leftScroll = useRef<HTMLDivElement>(null)
   const rightScroll = useRef<HTMLDivElement>(null)
   const syncing = useRef(false)
   const beforeSource = documentType === 'pdf' && sessionId ? api.previewUrl(sessionId, page) : previewAsset?.pageUrl(page)
 
-  useEffect(() => () => URL.revokeObjectURL(afterUrl), [afterUrl])
+  useEffect(() => {
+    const url = URL.createObjectURL(exported.blob)
+    setAfterUrl(url)
+
+    return () => URL.revokeObjectURL(url)
+  }, [exported.blob])
 
   const syncScroll = (source: 'left' | 'right') => {
     if (syncing.current) return
@@ -478,7 +494,7 @@ function BeforeAfterPreview({ file, previewAsset, sessionId, page, documentType,
     requestAnimationFrame(() => { syncing.current = false })
   }
 
-  return <section className="no-print panel mt-6 overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5"><div><p className="eyebrow">Before / after</p><h2 className="mt-1 text-lg font-bold text-navy">Compare the exported copy</h2><p className="mt-1 text-xs text-slate-500">The panes share zoom and scroll position. Review the result again before sharing.</p></div><div className="flex items-center gap-2"><button className="btn-quiet border border-slate-200" onClick={() => setZoom((value) => Math.max(75, value - 10))} aria-label="Zoom out"><Minus size={14} /></button><span className="min-w-[48px] text-center text-xs font-bold text-slate-500">{zoom}%</span><button className="btn-quiet border border-slate-200" onClick={() => setZoom((value) => Math.min(125, value + 10))} aria-label="Zoom in"><Plus size={14} /></button></div></div><div className="grid gap-4 bg-[#e9eef3] p-4 lg:grid-cols-2"><ComparePane label={`Before · ${file.name}`} scrollRef={leftScroll} onScroll={() => syncScroll('left')}><img src={beforeSource} alt="Original document page" className="max-w-none bg-white shadow-float" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} /></ComparePane><ComparePane label="After · verified export" scrollRef={rightScroll} onScroll={() => syncScroll('right')}>{documentType === 'image' ? <img src={afterUrl} alt="Verified redacted export" className="max-w-none bg-white shadow-float" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} /> : <iframe src={`${afterUrl}#page=${page}&view=FitH`} title="Verified redacted export" className="h-[430px] min-w-full border-0 bg-white" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} />}</ComparePane></div></section>
+  return <section className="no-print panel mt-6 overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5"><div><p className="eyebrow">Before / after</p><h2 className="mt-1 text-lg font-bold text-navy">Compare the exported copy</h2><p className="mt-1 text-xs text-slate-500">The panes share zoom and scroll position. Review the result again before sharing.</p></div><div className="flex items-center gap-2"><button className="btn-quiet border border-slate-200" onClick={() => setZoom((value) => Math.max(75, value - 10))} aria-label="Zoom out"><Minus size={14} /></button><span className="min-w-[48px] text-center text-xs font-bold text-slate-500">{zoom}%</span><button className="btn-quiet border border-slate-200" onClick={() => setZoom((value) => Math.min(125, value + 10))} aria-label="Zoom in"><Plus size={14} /></button></div></div><div className="grid gap-4 bg-[#e9eef3] p-4 lg:grid-cols-2"><ComparePane label={`Before · ${file.name}`} scrollRef={leftScroll} onScroll={() => syncScroll('left')}><img src={beforeSource} alt="Original document page" className="max-w-none bg-white shadow-float" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} /></ComparePane><ComparePane label="After · verified export" scrollRef={rightScroll} onScroll={() => syncScroll('right')}>{afterUrl ? (documentType === 'image' ? <img src={afterUrl} alt="Verified redacted export" className="max-w-none bg-white shadow-float" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} /> : <iframe src={`${afterUrl}#page=${page}&view=FitH`} title="Verified redacted export" className="h-[430px] min-w-full border-0 bg-white" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} />) : <div className="flex h-[430px] items-center justify-center text-sm text-slate-400">Preparing verified preview…</div>}</ComparePane></div></section>
 }
 
 function ComparePane({ label, children, scrollRef, onScroll }: { label: string; children: React.ReactNode; scrollRef: React.RefObject<HTMLDivElement>; onScroll: () => void }) {
@@ -702,27 +718,27 @@ function DraftBox({ draft, pageSize }: { draft: { start: Point; current: Point }
   return <div className="pointer-events-none absolute rounded-sm border-2 border-dashed border-ink bg-ink/20" style={{ left: `${(x0 / pageSize.width) * 100}%`, top: `${(y0 / pageSize.height) * 100}%`, width: `${((x1 - x0) / pageSize.width) * 100}%`, height: `${((y1 - y0) / pageSize.height) * 100}%` }} />
 }
 
-function DetectionPanel({ findings, selectedFindingId, onSelect, onDecision, manualMode, setManualMode }: { findings: ReviewedFinding[]; selectedFindingId: string | null; onSelect: (finding: ReviewedFinding) => void; onDecision: (id: string, decision: Decision) => void; manualMode: boolean; setManualMode: (value: boolean) => void }) {
+function DetectionPanel({ findings, maskLastN, selectedFindingId, onSelect, onDecision, manualMode, setManualMode }: { findings: ReviewedFinding[]; maskLastN: number | null; selectedFindingId: string | null; onSelect: (finding: ReviewedFinding) => void; onDecision: (id: string, decision: Decision) => void; manualMode: boolean; setManualMode: (value: boolean) => void }) {
   const sortedFindings = [...findings].sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1])
   const lowConfidenceCount = findings.filter((finding) => finding.confidence < 0.8).length
   return (
     <section className="no-print panel overflow-hidden">
       <div className="border-b border-slate-100 px-4 py-4 sm:px-5"><div className="flex items-start justify-between gap-3"><div><p className="eyebrow">Review queue</p><h2 className="mt-1 text-lg font-bold text-navy">Detections <span className="text-slate-400">({findings.length})</span></h2></div><div className="rounded-xl bg-cyan/10 p-2 text-cyan"><PanelRight size={18} /></div></div><p className="mt-2 text-xs leading-5 text-slate-500">Click an area or use the decision controls. Values are intentionally not shown.</p>{lowConfidenceCount > 0 ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-xs leading-5 text-amber-900"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span><strong>{lowConfidenceCount} low-confidence area{lowConfidenceCount === 1 ? '' : 's'}.</strong> Review the highlighted boxes manually.</span></div> : null}</div>
       <div className="max-h-[510px] overflow-y-auto p-3">
-        {sortedFindings.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center"><ClipboardCheck className="mx-auto text-slate-300" size={27} /><p className="mt-3 text-sm font-semibold text-slate-600">No areas detected</p><p className="mt-1 text-xs leading-5 text-slate-400">You can still add a manual redaction rectangle in the preview.</p></div> : sortedFindings.map((finding, index) => <FindingRow key={finding.id} finding={finding} index={index} selected={selectedFindingId === finding.id} onSelect={onSelect} onDecision={onDecision} />)}
+         {sortedFindings.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center"><ClipboardCheck className="mx-auto text-slate-300" size={27} /><p className="mt-3 text-sm font-semibold text-slate-600">No areas detected</p><p className="mt-1 text-xs leading-5 text-slate-400">You can still add a manual redaction rectangle in the preview.</p></div> : sortedFindings.map((finding, index) => <FindingRow key={finding.id} finding={finding} maskLastN={maskLastN} index={index} selected={selectedFindingId === finding.id} onSelect={onSelect} onDecision={onDecision} />)}
       </div>
       <div className="border-t border-slate-100 bg-slate-50/70 p-3"><button className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition ${manualMode ? 'border-cyan bg-cyan/10 text-cyan-800' : 'border-slate-200 bg-white text-navy hover:border-slate-300'}`} onClick={() => setManualMode(!manualMode)} aria-pressed={manualMode}><Maximize2 size={14} />{manualMode ? 'Manual mode active · draw on preview' : 'Add a manual redaction area'}</button><p className="mt-2 text-center text-[10px] leading-4 text-slate-400">Manual rectangles and Keep decisions are sent to the backend and verified with the export.</p></div>
     </section>
   )
 }
 
-function FindingRow({ finding, index, selected, onSelect, onDecision }: { finding: ReviewedFinding; index: number; selected: boolean; onSelect: (finding: ReviewedFinding) => void; onDecision: (id: string, decision: Decision) => void }) {
+function FindingRow({ finding, maskLastN, index, selected, onSelect, onDecision }: { finding: ReviewedFinding; maskLastN: number | null; index: number; selected: boolean; onSelect: (finding: ReviewedFinding) => void; onDecision: (id: string, decision: Decision) => void }) {
   const tone = confidenceTone(finding.confidence)
   return (
     <div className={`mb-2 rounded-xl border p-3 transition ${selected ? 'border-cyan bg-cyan/5 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
       <div className="flex items-start gap-2.5">
         <button className="min-w-0 flex-1 text-left" onClick={() => onSelect(finding)} aria-label={`Review ${humanizeKind(finding.kind)} on page ${finding.page}`}>
-           <span className="flex items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${finding.decision === 'keep' ? 'bg-slate-400' : tone === 'low' ? 'bg-warning' : 'bg-cyan'}`} /><span className="truncate text-sm font-bold text-navy">{finding.manual ? 'Manual redaction' : humanizeKind(finding.kind)}</span>{finding.manual ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Added</span> : null}{finding.keepLastN ? <span className="rounded bg-cyan/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-cyan-800">Last {finding.keepLastN}</span> : null}</span>
+           <span className="flex items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${finding.decision === 'keep' ? 'bg-slate-400' : tone === 'low' ? 'bg-warning' : 'bg-cyan'}`} /><span className="truncate text-sm font-bold text-navy">{finding.manual ? 'Manual redaction' : humanizeKind(finding.kind)}</span>{finding.manual ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Added</span> : null}{finding.keepLastN && maskLastN !== null ? <span className="rounded bg-cyan/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-cyan-800">Last {maskLastN}</span> : null}</span>
           <span className="mt-1 block text-[11px] text-slate-500">Page {finding.page} · {finding.source} · {confidencePercent(finding.confidence)} confidence</span>
         </button>
         <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${tone === 'high' ? 'bg-emerald-50 text-emerald-700' : tone === 'medium' ? 'bg-sky-50 text-sky-700' : 'bg-amber-50 text-amber-700'}`}>{tone}</span>
@@ -732,13 +748,14 @@ function FindingRow({ finding, index, selected, onSelect, onDecision }: { findin
   )
 }
 
-function ExportPanel({ flattenToImage, setFlattenToImage, keepLastN, setKeepLastN, busy, exported, redactedCount, onExport, onDownload }: { flattenToImage: boolean; setFlattenToImage: (value: boolean) => void; keepLastN: number | null; setKeepLastN: (value: number | null) => void; busy: BusyState; exported: { blob: Blob; filename: string } | null; redactedCount: number; onExport: () => void; onDownload: () => void }) {
+function ExportPanel({ flattenToImage, setFlattenToImage, documentType, keepLastN, setKeepLastN, busy, exported, redactedCount, onExport, onDownload }: { flattenToImage: boolean; setFlattenToImage: (value: boolean) => void; documentType: DocumentType; keepLastN: number | null; setKeepLastN: (value: number | null) => void; busy: BusyState; exported: { blob: Blob; filename: string } | null; redactedCount: number; onExport: () => void; onDownload: () => void }) {
+  const isPdf = documentType === 'pdf'
   return (
     <section className="no-print panel overflow-hidden">
       <div className="bg-ink px-4 py-4 text-white sm:px-5"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan">Export</p><h2 className="mt-1 text-lg font-bold">Create a safe copy</h2></div><ArrowDownToLine className="text-mint" size={20} /></div><p className="mt-2 text-xs leading-5 text-slate-300">The API verifies the output before returning the file.</p></div>
       <div className="space-y-4 p-4 sm:p-5">
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan" checked={flattenToImage} onChange={(event) => setFlattenToImage(event.target.checked)} /><span><span className="block text-sm font-bold text-navy">Flatten PDF to image</span><span className="mt-1 block text-xs leading-5 text-slate-500">Rasterizes each page to remove text-layer remnants.</span></span></label>
-         <label className="block"><span className="flex items-center justify-between text-sm font-bold text-navy"><span>Partial mask for identifiers</span><span className="text-xs font-normal text-slate-400">optional</span></span><div className="mt-2 flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-cyan" checked={keepLastN !== null} onChange={(event) => setKeepLastN(event.target.checked ? 4 : null)} /><span className="text-xs text-slate-500">Keep last</span><input type="number" min={1} max={20} value={keepLastN ?? 4} disabled={keepLastN === null} onChange={(event) => setKeepLastN(Math.max(1, Math.min(20, Number(event.target.value) || 1)))} className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-navy disabled:bg-slate-50 disabled:text-slate-400" /><span className="text-xs text-slate-500">characters</span></div><p className="mt-1 text-[11px] leading-5 text-slate-400">The server proportionally redacts the leading part of a detected value.</p></label>
+         <label className={`flex items-start gap-3 rounded-xl border border-slate-200 p-3 ${isPdf ? 'cursor-pointer' : 'cursor-not-allowed bg-slate-50/70'}`}><input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan" checked={isPdf && flattenToImage} disabled={!isPdf} onChange={(event) => setFlattenToImage(event.target.checked)} /><span><span className="block text-sm font-bold text-navy">Flatten PDF to image</span><span className="mt-1 block text-xs leading-5 text-slate-500">{isPdf ? 'Rasterizes each page to remove text-layer remnants.' : 'Not needed for images; this upload is already rasterized.'}</span></span></label>
+         <label className="block"><span className="flex items-center justify-between text-sm font-bold text-navy"><span>Partial mask for detected identifiers</span><span className="text-xs font-normal text-slate-400">optional</span></span><div className="mt-2 flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-cyan" checked={keepLastN !== null} onChange={(event) => setKeepLastN(event.target.checked ? 4 : null)} /><span className="text-xs text-slate-500">Keep last</span><input type="number" min={1} max={20} value={keepLastN ?? 4} disabled={keepLastN === null} onChange={(event) => setKeepLastN(Math.max(1, Math.min(20, Number(event.target.value) || 1)))} className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-navy disabled:bg-slate-50 disabled:text-slate-400" /><span className="text-xs text-slate-500">characters</span></div><p className="mt-1 text-[11px] leading-5 text-slate-400">When enabled, eligible identifiers such as PAN, Aadhaar, and passport detections keep their final characters. Other fields remain fully redacted.</p></label>
         <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-500"><FileCheck2 size={15} className="mt-0.5 shrink-0 text-cyan" />{redactedCount} area{redactedCount === 1 ? '' : 's'} marked for the review preview. Server verification checks text, bytes, metadata, and annotations.</div>
         <button className="btn-primary w-full" onClick={onExport} disabled={busy === 'export'}>{busy === 'export' ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />}{busy === 'export' ? 'Verifying export…' : 'Export redacted file'}</button>
         {exported ? <button className="btn-secondary w-full" onClick={onDownload}><ArrowDownToLine size={16} /> Download again · {exported.filename}</button> : null}

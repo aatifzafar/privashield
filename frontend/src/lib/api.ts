@@ -33,6 +33,21 @@ async function readError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, detail)
 }
 
+function extensionForMediaType(mediaType: string): string | null {
+  if (mediaType === 'application/pdf') return '.pdf'
+  if (mediaType === 'image/png') return '.png'
+  if (mediaType === 'image/jpeg') return '.jpg'
+  return null
+}
+
+function filenameForMediaType(filename: string, mediaType: string): string {
+  const extension = extensionForMediaType(mediaType)
+  if (!extension || filename.toLowerCase().endsWith(extension)) return filename
+  const dot = filename.lastIndexOf('.')
+  const basename = dot > 0 ? filename.slice(0, dot) : filename
+  return `${basename}${extension}`
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
@@ -97,11 +112,14 @@ export const api = {
     }
     if (!response.ok) throw await readError(response)
 
+    const blob = await response.blob()
+    const mediaType = (blob.type || response.headers.get('Content-Type') || '').split(';', 1)[0].trim().toLowerCase()
     const disposition = response.headers.get('Content-Disposition') || ''
     const filenameMatch = disposition.match(/filename="?([^";]+)"?/i)
+    const filename = filenameMatch?.[1] || `privashield-redacted${extensionForMediaType(mediaType) || '.pdf'}`
     return {
-      blob: await response.blob(),
-      filename: filenameMatch?.[1] || 'privashield-redacted.pdf',
+      blob,
+      filename: filenameForMediaType(filename, mediaType),
       sessionId: response.headers.get('X-Privashield-Session-ID'),
       exportId: response.headers.get('X-Privashield-Export-ID'),
       verification: response.headers.get('X-Privashield-Verification'),

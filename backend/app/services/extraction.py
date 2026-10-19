@@ -59,7 +59,7 @@ def _ocr_words_for_page(page_number: int, image: Image.Image, width: float, heig
             text=word.text,
             bbox=(word.left * scale_x, word.top * scale_y, word.right * scale_x, word.bottom * scale_y),
             page=page_number,
-            line_id=(0, index),
+            line_id=word.line_id,
             source="ocr",
             confidence=word.confidence,
         )

@@ -137,6 +137,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["*"],
+        expose_headers=[
+            "Content-Disposition",
+            "X-Privashield-Session-ID",
+            "X-Privashield-Export-ID",
+            "X-Privashield-Verification",
+        ],
     )
 
     @application.get("/api/health", response_model=HealthResponse)

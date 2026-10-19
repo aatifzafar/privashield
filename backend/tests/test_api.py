@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from tests.conftest import make_pdf
+from tests.conftest import make_pdf, make_png
 
 
 def test_upload_analyze_report_export_and_delete(tmp_path) -> None:
@@ -24,9 +24,15 @@ def test_upload_analyze_report_export_and_delete(tmp_path) -> None:
         assert "ABCDE1234F" not in analyzed.text
         assert client.get(f"/api/report/{session_id}").status_code == 200
 
-        exported = client.post("/api/export", json={"session_id": session_id, "use_ocr": False})
+        exported = client.post(
+            "/api/export",
+            json={"session_id": session_id, "use_ocr": False},
+            headers={"Origin": "http://127.0.0.1:5173"},
+        )
         assert exported.status_code == 200
         assert exported.headers["x-privashield-verification"] == "passed"
+        exposed_headers = {item.strip().lower() for item in exported.headers["access-control-expose-headers"].split(",")}
+        assert "content-disposition" in exposed_headers
         assert b"ABCDE1234F" not in exported.content
 
         deleted = client.delete(f"/api/session/{session_id}")
@@ -70,6 +76,25 @@ def test_pdf_preview_is_rendered_from_the_temporary_session(tmp_path) -> None:
     assert preview.status_code == 200
     assert preview.headers["content-type"].startswith("image/png")
     assert preview.content.startswith(b"\x89PNG")
+
+
+def test_image_export_returns_an_image_filename_and_media_type(tmp_path) -> None:
+    app = create_app(Settings(storage_dir=tmp_path, session_ttl_seconds=3600))
+    with TestClient(app) as client:
+        upload = client.post("/api/upload", files={"file": ("input.png", make_png(), "image/png")})
+        assert upload.status_code == 201
+        session_id = upload.json()["session_id"]
+
+        exported = client.post(
+            "/api/export",
+            json={"session_id": session_id, "use_ocr": False},
+            headers={"Origin": "http://127.0.0.1:5173"},
+        )
+
+    assert exported.status_code == 200
+    assert exported.headers["content-type"].startswith("image/png")
+    assert exported.headers["content-disposition"].endswith('.png"')
+    assert exported.content.startswith(b"\x89PNG")
 
 
 def test_upload_rejects_content_that_does_not_match_allowed_magic_bytes(tmp_path) -> None:
