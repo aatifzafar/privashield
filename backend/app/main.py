@@ -189,8 +189,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @application.get("/api/session/{session_id}/preview/{page_number}")
     async def preview(session_id: str, page_number: int, http_request: Request) -> Response:
-        enforce_rate_limit(http_request)
         """Render an unredacted session page for the authenticated local UI preview."""
+        enforce_rate_limit(http_request)
         session = _session_or_404(store, session_id)
         if page_number < 1 or page_number > session.pages:
             raise HTTPException(status_code=404, detail="Preview page not found")

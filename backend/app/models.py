@@ -106,7 +106,6 @@ def safe_report_payload(
     all_findings = list(findings)
     redacted = list(all_findings if redacted_findings is None else redacted_findings)
     kept = list([] if kept_findings is None else kept_findings)
-    redacted_ids = {item.public_id for item in redacted}
     kept_ids = {item.public_id for item in kept}
 
     def category_counts(items: list[Any]) -> dict[str, int]:
