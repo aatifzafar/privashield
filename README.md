@@ -134,11 +134,11 @@ Never use this prototype as the sole control for high-impact identity decisions.
 |---|---|---|
 | Upload | PDF/JPG/PNG magic-byte validation, 10 MB, max 5 PDF pages | More formats and organization-specific policy limits |
 | Detection | PyMuPDF word boxes, local Tesseract OCR when installed, regex/Verhoeff/label heuristics, optional low-confidence QR/face | More document-specific models, handwriting, adversarial-layout evaluation |
-| Review | Keep/redact controls, page overlays, manual rectangles, low-confidence warnings | Stronger native PDF rendering and synchronized before/after pane |
+| Review | Keep/redact controls, page overlays, manual rectangles, low-confidence warnings, data-driven purpose presets | More document-specific policy tuning |
 | Export | PyMuPDF true redactions, image pixel burns, metadata/object cleanup, flatten-to-image PDF, keep-last-N partial masking | Independent sandboxing and formal external security review |
 | Verification | Extracted text/raw bytes/metadata/annotations and optional OCR checks, per-field statuses | Better OCR evidence for every scan and corpus-based regression suite |
 | Privacy | Per-session temp storage, TTL cleanup, explicit delete, no content logging, value-free reports | Memory-only deployment option and hardened multi-tenant isolation |
-| Product | Purpose presets and printable/JSON report | Bank-statement narration preset, batch review, client-only image mode |
+| Product | Purpose presets, synchronized before/after preview, printable/JSON report | Bank-statement narration preset, batch review, client-only image mode |
 
 ## Two-minute demo script
 

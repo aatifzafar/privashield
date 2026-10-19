@@ -220,7 +220,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail=analysis.content.ocr_message or "OCR is required for this image-only page but is unavailable",
             )
         review_findings, redacted_findings, kept_findings = _reviewed_findings(analysis, payload.findings, session.pages)
-        effective_redactions = [apply_keep_last_n(finding, payload.keep_last_n) for finding in redacted_findings]
+        requested_by_id = {item.id: item for item in payload.findings}
+        effective_redactions = [
+            apply_keep_last_n(finding, requested_by_id.get(finding.public_id).keep_last_n if requested_by_id.get(finding.public_id) else payload.keep_last_n)
+            for finding in redacted_findings
+        ]
         if session.document_type == "pdf":
             output = redact_pdf(source, effective_redactions, payload.flatten_to_image)
             suffix = ".pdf"

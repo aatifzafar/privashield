@@ -71,4 +71,5 @@ The UI uses a local object URL for image previews and a temporary backend-render
 
 - The backend re-analyzes on export and treats omitted known findings as redact-by-default. Manual rectangles are accepted as explicit client geometry and are still subject to output verification; they cannot be verified against a known value.
 - The frontend surfaces low-confidence warnings and OCR availability warnings from the backend. It does not claim perfect detection, legal compliance, or coverage for every document type.
+- Purpose presets live in `src/config/presets.ts` and preselect Keep/Redact choices while leaving every field editable. Identity verification also marks common ID detections for a last-four partial mask.
 - No frontend test runner is added for this Phase 1 standalone shell; `npm test` provides the offline TypeScript check and `npm run build` is the production verification command.

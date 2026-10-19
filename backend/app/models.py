@@ -23,6 +23,7 @@ class FindingDecision(BaseModel):
     bbox: list[float] = Field(min_length=4, max_length=4)
     decision: Literal["keep", "redact"] = "redact"
     manual: bool = False
+    keep_last_n: int | None = Field(default=None, ge=1, le=20)
 
 
 class ExportRequest(BaseModel):

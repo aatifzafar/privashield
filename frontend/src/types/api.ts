@@ -27,6 +27,7 @@ export interface FindingDecision {
   bbox: [number, number, number, number]
   decision: 'keep' | 'redact'
   manual?: boolean
+  keep_last_n?: number
 }
 
 export interface HealthResponse {

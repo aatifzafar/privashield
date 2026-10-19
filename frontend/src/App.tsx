@@ -34,10 +34,12 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
 import { api, ApiError } from './lib/api'
+import { PURPOSE_PRESETS, presetDecision, presetMaskLastN, type PurposePreset } from './config/presets'
 import {
   confidencePercent,
   confidenceTone,
@@ -68,6 +70,7 @@ type Bbox = [number, number, number, number]
 interface ReviewedFinding extends FindingResponse {
   decision: Decision
   manual?: boolean
+  keepLastN?: number
 }
 
 interface PreviewAsset {
@@ -75,39 +78,11 @@ interface PreviewAsset {
   pageUrl: (page: number) => string
 }
 
-interface PurposePreset {
-  id: string
-  label: string
-  description: string
-  focus: string[]
-}
-
 const STEPS: { id: WorkflowStep; label: string; helper: string }[] = [
   { id: 'upload', label: 'Upload', helper: 'Add a document' },
   { id: 'review', label: 'Review', helper: 'Check detections' },
   { id: 'preview', label: 'Preview', helper: 'Inspect redactions' },
   { id: 'export', label: 'Export', helper: 'Download safely' },
-]
-
-const PURPOSE_PRESETS: PurposePreset[] = [
-  {
-    id: 'share',
-    label: 'Share externally',
-    description: 'A broad review for documents leaving your team.',
-    focus: ['Identity numbers', 'Contact details', 'Addresses'],
-  },
-  {
-    id: 'support',
-    label: 'Support ticket',
-    description: 'Keep enough context for a support handoff.',
-    focus: ['Account identifiers', 'Faces & QR codes', 'Dates'],
-  },
-  {
-    id: 'archive',
-    label: 'Internal archive',
-    description: 'Review high-risk fields before temporary storage.',
-    focus: ['Government IDs', 'Bank details', 'Metadata'],
-  },
 ]
 
 function getErrorMessage(error: unknown): string {
@@ -151,7 +126,7 @@ function App() {
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null)
   const [selectedPage, setSelectedPage] = useState(1)
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null)
-  const [purposeId, setPurposeId] = useState('share')
+  const [purposeId, setPurposeId] = useState('identity')
   const [useOcr, setUseOcr] = useState(true)
   const [flattenToImage, setFlattenToImage] = useState(false)
   const [keepLastN, setKeepLastN] = useState<number | null>(null)
@@ -248,7 +223,11 @@ function App() {
     try {
       const result = await api.analyze({ session_id: sessionId, use_ocr: useOcr })
       setReport(result)
-      setFindings(result.findings.map((finding) => ({ ...finding, decision: 'redact' as Decision })))
+      setFindings(result.findings.map((finding) => ({
+        ...finding,
+        decision: presetDecision(purpose, finding.kind),
+        keepLastN: presetMaskLastN(purpose, finding.kind),
+      })))
       setSelectedFindingId(result.findings[0]?.id || null)
       setSelectedPage(result.findings[0]?.page || 1)
       setWorkflowStep('review')
@@ -270,7 +249,7 @@ function App() {
         use_ocr: useOcr,
         flatten_to_image: flattenToImage,
         keep_last_n: keepLastN,
-        findings: findings.map(({ id, page, bbox, decision, manual }) => ({ id, page, bbox, decision, manual })),
+        findings: findings.map(({ id, page, bbox, decision, manual, keepLastN: findingKeepLastN }) => ({ id, page, bbox, decision, manual, keep_last_n: findingKeepLastN })),
       })
       setExported({ blob: result.blob, filename: result.filename })
       downloadBlob(result.blob, result.filename)
@@ -464,6 +443,7 @@ function App() {
             )}
 
             {report ? <PrivacyReport report={report} onDownloadJson={() => downloadJson(report, `privashield-report-${report.report_id}.json`)} onPrint={() => window.print()} /> : null}
+            {report && exported ? <BeforeAfterPreview file={file} previewAsset={previewAsset} sessionId={sessionId} page={selectedPage} documentType={report.document_type} exported={exported} /> : null}
           </>
         )}
       </main>
@@ -474,6 +454,35 @@ function App() {
       </footer>
     </div>
   )
+}
+
+function BeforeAfterPreview({ file, previewAsset, sessionId, page, documentType, exported }: { file: File; previewAsset: PreviewAsset | null; sessionId: string | null; page: number; documentType: DocumentType; exported: { blob: Blob; filename: string } }) {
+  const [zoom, setZoom] = useState(100)
+  const afterUrl = useMemo(() => URL.createObjectURL(exported.blob), [exported.blob])
+  const leftScroll = useRef<HTMLDivElement>(null)
+  const rightScroll = useRef<HTMLDivElement>(null)
+  const syncing = useRef(false)
+  const beforeSource = documentType === 'pdf' && sessionId ? api.previewUrl(sessionId, page) : previewAsset?.pageUrl(page)
+
+  useEffect(() => () => URL.revokeObjectURL(afterUrl), [afterUrl])
+
+  const syncScroll = (source: 'left' | 'right') => {
+    if (syncing.current) return
+    syncing.current = true
+    const from = source === 'left' ? leftScroll.current : rightScroll.current
+    const to = source === 'left' ? rightScroll.current : leftScroll.current
+    if (from && to) {
+      to.scrollTop = from.scrollTop
+      to.scrollLeft = from.scrollLeft
+    }
+    requestAnimationFrame(() => { syncing.current = false })
+  }
+
+  return <section className="no-print panel mt-6 overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5"><div><p className="eyebrow">Before / after</p><h2 className="mt-1 text-lg font-bold text-navy">Compare the exported copy</h2><p className="mt-1 text-xs text-slate-500">The panes share zoom and scroll position. Review the result again before sharing.</p></div><div className="flex items-center gap-2"><button className="btn-quiet border border-slate-200" onClick={() => setZoom((value) => Math.max(75, value - 10))} aria-label="Zoom out"><Minus size={14} /></button><span className="min-w-[48px] text-center text-xs font-bold text-slate-500">{zoom}%</span><button className="btn-quiet border border-slate-200" onClick={() => setZoom((value) => Math.min(125, value + 10))} aria-label="Zoom in"><Plus size={14} /></button></div></div><div className="grid gap-4 bg-[#e9eef3] p-4 lg:grid-cols-2"><ComparePane label={`Before · ${file.name}`} scrollRef={leftScroll} onScroll={() => syncScroll('left')}><img src={beforeSource} alt="Original document page" className="max-w-none bg-white shadow-float" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} /></ComparePane><ComparePane label="After · verified export" scrollRef={rightScroll} onScroll={() => syncScroll('right')}>{documentType === 'image' ? <img src={afterUrl} alt="Verified redacted export" className="max-w-none bg-white shadow-float" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} /> : <iframe src={`${afterUrl}#page=${page}&view=FitH`} title="Verified redacted export" className="h-[430px] min-w-full border-0 bg-white" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} />}</ComparePane></div></section>
+}
+
+function ComparePane({ label, children, scrollRef, onScroll }: { label: string; children: React.ReactNode; scrollRef: React.RefObject<HTMLDivElement>; onScroll: () => void }) {
+  return <div className="min-w-0"><p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p><div ref={scrollRef} onScroll={onScroll} className="h-[440px] overflow-auto rounded-xl border border-slate-200 bg-white p-3">{children}</div></div>
 }
 
 function WorkflowStepper({ activeStep, activeIndex, onNavigate }: { activeStep: WorkflowStep; activeIndex: number; onNavigate: (step: WorkflowStep, index: number) => void }) {
@@ -713,7 +722,7 @@ function FindingRow({ finding, index, selected, onSelect, onDecision }: { findin
     <div className={`mb-2 rounded-xl border p-3 transition ${selected ? 'border-cyan bg-cyan/5 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
       <div className="flex items-start gap-2.5">
         <button className="min-w-0 flex-1 text-left" onClick={() => onSelect(finding)} aria-label={`Review ${humanizeKind(finding.kind)} on page ${finding.page}`}>
-          <span className="flex items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${finding.decision === 'keep' ? 'bg-slate-400' : tone === 'low' ? 'bg-warning' : 'bg-cyan'}`} /><span className="truncate text-sm font-bold text-navy">{finding.manual ? 'Manual redaction' : humanizeKind(finding.kind)}</span>{finding.manual ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Added</span> : null}</span>
+           <span className="flex items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${finding.decision === 'keep' ? 'bg-slate-400' : tone === 'low' ? 'bg-warning' : 'bg-cyan'}`} /><span className="truncate text-sm font-bold text-navy">{finding.manual ? 'Manual redaction' : humanizeKind(finding.kind)}</span>{finding.manual ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Added</span> : null}{finding.keepLastN ? <span className="rounded bg-cyan/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-cyan-800">Last {finding.keepLastN}</span> : null}</span>
           <span className="mt-1 block text-[11px] text-slate-500">Page {finding.page} · {finding.source} · {confidencePercent(finding.confidence)} confidence</span>
         </button>
         <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${tone === 'high' ? 'bg-emerald-50 text-emerald-700' : tone === 'medium' ? 'bg-sky-50 text-sky-700' : 'bg-amber-50 text-amber-700'}`}>{tone}</span>
