@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "privashield-backend"
+version = "0.1.0"
+description = "Self-contained Phase 1 privacy document redaction API"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn==0.34.0",
+  "python-multipart==0.0.20",
+  "PyMuPDF==1.25.3",
+  "Pillow==11.1.0",
+]
+
+[project.optional-dependencies]
+ocr = ["pytesseract==0.3.13"]
+vision = ["opencv-python-headless==4.10.0.84"]
+test = ["pytest==8.3.4", "httpx==0.28.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

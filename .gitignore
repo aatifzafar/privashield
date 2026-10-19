@@ -1,0 +1,38 @@
+# Runtime and secrets
+.env
+.env.*
+!.env.example
+*.log
+
+# Python
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/build/
+**/*.egg-info/
+
+# Node
+**/node_modules/
+**/dist/
+**/.vite/
+**/coverage/
+npm-debug.log*
+
+# Local document/session data
+.local/
+privashield-sessions/
+**/storage/
+
+# IDE/OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Generated sample build artifacts
+samples/generated/
