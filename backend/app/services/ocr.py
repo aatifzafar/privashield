@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+from pathlib import Path
+import sys
 from typing import Any
 
 
@@ -27,19 +30,43 @@ def _unavailable(message: str) -> OcrRun:
     return OcrRun((), False, False, message)
 
 
+def _configure_tesseract(pytesseract: Any) -> None:
+    configured = os.getenv("PRIVASHIELD_TESSERACT_CMD")
+    if configured:
+        pytesseract.pytesseract.tesseract_cmd = configured
+        return
+    if sys.platform != "win32":
+        return
+    # Common Windows install locations. This also works when the user has not
+    # restarted their shell after installing Tesseract.
+    candidates = (
+        Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Tesseract-OCR" / "tesseract.exe",
+        Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Tesseract-OCR" / "tesseract.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Tesseract-OCR" / "tesseract.exe",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            pytesseract.pytesseract.tesseract_cmd = str(candidate)
+            return
+
+
 def run_ocr(image: Any) -> OcrRun:
     try:
         import pytesseract
         from pytesseract import Output
     except ImportError:
-        return _unavailable("OCR unavailable: install the optional pytesseract package and Tesseract executable")
+        return _unavailable("OCR unavailable: install the optional pytesseract package")
 
     try:
+        _configure_tesseract(pytesseract)
         # This detects the common case where the Python wrapper exists but the binary does not.
         pytesseract.get_tesseract_version()
         data = pytesseract.image_to_data(image, output_type=Output.DICT)
-    except Exception:
-        return _unavailable("OCR unavailable: install Tesseract and ensure it is on PATH")
+    except Exception as exc:
+        not_found = getattr(pytesseract, "TesseractNotFoundError", ())
+        if not_found and isinstance(exc, not_found):
+            return _unavailable("OCR unavailable: install Tesseract or set PRIVASHIELD_TESSERACT_CMD to tesseract.exe")
+        return _unavailable("OCR unavailable: Tesseract could not process this page")
 
     words: list[OcrWord] = []
     for index, raw_text in enumerate(data.get("text", [])):

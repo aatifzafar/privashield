@@ -6,6 +6,26 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _load_local_env() -> None:
+    """Load the backend-local .env without overriding real environment variables."""
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.is_file():
+        return
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
 def _positive_int(name: str, default: int, minimum: int, maximum: int | None = None) -> int:
     value = os.getenv(name)
     if value is None:
@@ -36,6 +56,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        _load_local_env()
         storage_value = os.getenv("PRIVASHIELD_STORAGE_DIR")
         storage_dir = Path(storage_value) if storage_value else Path(tempfile.gettempdir()) / "privashield-sessions"
         cors_value = os.getenv("PRIVASHIELD_CORS_ORIGINS")

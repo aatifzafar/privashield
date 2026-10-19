@@ -62,7 +62,7 @@ Text PDFs work with the base backend dependencies. Scanned PDFs and images need 
 python -m pip install -e ".[ocr]"
 ```
 
-Then install Tesseract using the platform package manager: Ubuntu/Debian `sudo apt-get install tesseract-ocr`; macOS `brew install tesseract`; Windows install the official Tesseract package and add its install directory to `PATH`. The app reports OCR-unavailable instead of silently claiming a scan was covered.
+Then install Tesseract using the platform package manager: Ubuntu/Debian `sudo apt-get install tesseract-ocr`; macOS `brew install tesseract`; Windows install the official Tesseract package. Add its install directory to `PATH`, or set `PRIVASHIELD_TESSERACT_CMD` in `backend/.env` to the full path of `tesseract.exe` (for example `C:\\Program Files\\Tesseract-OCR\\tesseract.exe`). Restart the backend after changing this. The app reports OCR-unavailable instead of silently claiming a scan was covered.
 
 Optional QR/face heuristics use `python -m pip install -e ".[vision]"` and are always marked low confidence.
 
