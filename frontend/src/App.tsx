@@ -154,7 +154,7 @@ function App() {
   const [purposeId, setPurposeId] = useState('share')
   const [useOcr, setUseOcr] = useState(true)
   const [flattenToImage, setFlattenToImage] = useState(false)
-  const [keepLastN, setKeepLastN] = useState(3)
+  const [keepLastN, setKeepLastN] = useState<number | null>(null)
   const [manualMode, setManualMode] = useState(false)
   const [exported, setExported] = useState<{ blob: Blob; filename: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -270,6 +270,7 @@ function App() {
         use_ocr: useOcr,
         flatten_to_image: flattenToImage,
         keep_last_n: keepLastN,
+        findings: findings.map(({ id, page, bbox, decision, manual }) => ({ id, page, bbox, decision, manual })),
       })
       setExported({ blob: result.blob, filename: result.filename })
       downloadBlob(result.blob, result.filename)
@@ -424,6 +425,7 @@ function App() {
                 <PreviewSurface
                   file={file}
                   previewAsset={previewAsset}
+                  sessionId={sessionId}
                   documentType={report.document_type}
                   page={selectedPage}
                   pageCount={pageCount}
@@ -608,11 +610,12 @@ function AnalysisSetup({ purpose, purposeId, setPurposeId, useOcr, setUseOcr, up
   )
 }
 
-function PreviewSurface({ file, previewAsset, documentType, page, pageCount, findings, selectedFindingId, imageSize, setImageSize, manualMode, setManualMode, onPageChange, onSelectFinding, onCreateManual }: { file: File; previewAsset: PreviewAsset | null; documentType: DocumentType; page: number; pageCount: number; findings: ReviewedFinding[]; selectedFindingId: string | null; imageSize: { width: number; height: number } | null; setImageSize: (size: { width: number; height: number }) => void; manualMode: boolean; setManualMode: (value: boolean) => void; onPageChange: (page: number) => void; onSelectFinding: (finding: ReviewedFinding) => void; onCreateManual: (page: number, bbox: Bbox) => void }) {
+function PreviewSurface({ file, previewAsset, sessionId, documentType, page, pageCount, findings, selectedFindingId, imageSize, setImageSize, manualMode, setManualMode, onPageChange, onSelectFinding, onCreateManual }: { file: File; previewAsset: PreviewAsset | null; sessionId: string | null; documentType: DocumentType; page: number; pageCount: number; findings: ReviewedFinding[]; selectedFindingId: string | null; imageSize: { width: number; height: number } | null; setImageSize: (size: { width: number; height: number }) => void; manualMode: boolean; setManualMode: (value: boolean) => void; onPageChange: (page: number) => void; onSelectFinding: (finding: ReviewedFinding) => void; onCreateManual: (page: number, bbox: Bbox) => void }) {
   const [zoom, setZoom] = useState(100)
   const [draft, setDraft] = useState<{ start: Point; current: Point } | null>(null)
-  const pageSize = documentType === 'image' ? imageSize || FALLBACK_PAGE_SIZE : FALLBACK_PAGE_SIZE
-  const imagePreview = documentType === 'image' && previewAsset
+  const pageSize = imageSize || FALLBACK_PAGE_SIZE
+  const pageSource = documentType === 'pdf' && sessionId ? api.previewUrl(sessionId, page) : previewAsset?.pageUrl(page)
+  const imagePreview = Boolean(pageSource)
 
   const pointFromEvent = (event: ReactPointerEvent<HTMLDivElement>): Point => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -666,7 +669,7 @@ function PreviewSurface({ file, previewAsset, documentType, page, pageCount, fin
         {imagePreview ? (
           <div className="checkerboard overflow-auto rounded-xl border border-slate-200 p-3 shadow-inner">
             <div className="relative mx-auto w-fit max-w-full transition-transform" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
-              <img src={previewAsset.pageUrl(page)} alt={`Page ${page} of ${file.name}`} className="block max-h-[620px] max-w-full rounded-sm bg-white shadow-float" onLoad={(event) => setImageSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} />
+              <img src={pageSource} alt={`Page ${page} of ${file.name}`} className="block max-h-[620px] max-w-full rounded-sm bg-white shadow-float" onLoad={(event) => setImageSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} />
               <div className={`absolute inset-0 ${manualMode ? 'cursor-crosshair' : ''}`} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} role={manualMode ? 'application' : undefined} aria-label={manualMode ? 'Draw a manual redaction rectangle' : 'Document redaction overlay'}>
                 {findings.map((finding) => renderBox(finding, finding.id))}
                 {draft ? <DraftBox draft={draft} pageSize={pageSize} /> : null}
@@ -674,10 +677,7 @@ function PreviewSurface({ file, previewAsset, documentType, page, pageCount, fin
             </div>
           </div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_205px]">
-            <div className="pdf-frame overflow-hidden rounded-xl border border-slate-200 shadow-inner"><iframe src={previewAsset?.pageUrl(page)} title={`PDF page ${page} preview`} className="h-[510px] w-full border-0" /></div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="mb-2 flex items-center justify-between"><span className="eyebrow">Overlay map</span><PanelRight size={14} className="text-slate-400" /></div><div className={`relative mx-auto w-full max-w-[170px] overflow-visible rounded border border-slate-200 bg-white shadow-sm ${manualMode ? 'cursor-crosshair' : ''}`} style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} role={manualMode ? 'application' : undefined} aria-label={manualMode ? 'Draw a manual redaction rectangle' : 'Document redaction overlay'}>{findings.map((finding) => renderBox(finding, finding.id))}{draft ? <DraftBox draft={draft} pageSize={pageSize} /> : null}</div><p className="mt-3 text-[10px] leading-4 text-slate-400">Detected areas are positioned from backend page coordinates. Click one to mark it for redaction.</p></div>
-          </div>
+          <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">The page preview is not available yet. Upload the document to render it here.</div>
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500 sm:px-5"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-cyan" />Redact <span className="ml-2 h-2 w-2 rounded-full bg-slate-400" />Keep</span><span>{findings.length} area{findings.length === 1 ? '' : 's'} on this page · overlay is a review aid</span></div>
@@ -702,7 +702,7 @@ function DetectionPanel({ findings, selectedFindingId, onSelect, onDecision, man
       <div className="max-h-[510px] overflow-y-auto p-3">
         {sortedFindings.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center"><ClipboardCheck className="mx-auto text-slate-300" size={27} /><p className="mt-3 text-sm font-semibold text-slate-600">No areas detected</p><p className="mt-1 text-xs leading-5 text-slate-400">You can still add a manual redaction rectangle in the preview.</p></div> : sortedFindings.map((finding, index) => <FindingRow key={finding.id} finding={finding} index={index} selected={selectedFindingId === finding.id} onSelect={onSelect} onDecision={onDecision} />)}
       </div>
-      <div className="border-t border-slate-100 bg-slate-50/70 p-3"><button className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition ${manualMode ? 'border-cyan bg-cyan/10 text-cyan-800' : 'border-slate-200 bg-white text-navy hover:border-slate-300'}`} onClick={() => setManualMode(!manualMode)} aria-pressed={manualMode}><Maximize2 size={14} />{manualMode ? 'Manual mode active · draw on preview' : 'Add a manual redaction area'}</button><p className="mt-2 text-center text-[10px] leading-4 text-slate-400">Manual and Keep decisions update this review preview. The current Phase 1 export API accepts the session and its server-side analysis.</p></div>
+      <div className="border-t border-slate-100 bg-slate-50/70 p-3"><button className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition ${manualMode ? 'border-cyan bg-cyan/10 text-cyan-800' : 'border-slate-200 bg-white text-navy hover:border-slate-300'}`} onClick={() => setManualMode(!manualMode)} aria-pressed={manualMode}><Maximize2 size={14} />{manualMode ? 'Manual mode active · draw on preview' : 'Add a manual redaction area'}</button><p className="mt-2 text-center text-[10px] leading-4 text-slate-400">Manual rectangles and Keep decisions are sent to the backend and verified with the export.</p></div>
     </section>
   )
 }
@@ -723,13 +723,13 @@ function FindingRow({ finding, index, selected, onSelect, onDecision }: { findin
   )
 }
 
-function ExportPanel({ flattenToImage, setFlattenToImage, keepLastN, setKeepLastN, busy, exported, redactedCount, onExport, onDownload }: { flattenToImage: boolean; setFlattenToImage: (value: boolean) => void; keepLastN: number; setKeepLastN: (value: number) => void; busy: BusyState; exported: { blob: Blob; filename: string } | null; redactedCount: number; onExport: () => void; onDownload: () => void }) {
+function ExportPanel({ flattenToImage, setFlattenToImage, keepLastN, setKeepLastN, busy, exported, redactedCount, onExport, onDownload }: { flattenToImage: boolean; setFlattenToImage: (value: boolean) => void; keepLastN: number | null; setKeepLastN: (value: number | null) => void; busy: BusyState; exported: { blob: Blob; filename: string } | null; redactedCount: number; onExport: () => void; onDownload: () => void }) {
   return (
     <section className="no-print panel overflow-hidden">
       <div className="bg-ink px-4 py-4 text-white sm:px-5"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan">Export</p><h2 className="mt-1 text-lg font-bold">Create a safe copy</h2></div><ArrowDownToLine className="text-mint" size={20} /></div><p className="mt-2 text-xs leading-5 text-slate-300">The API verifies the output before returning the file.</p></div>
       <div className="space-y-4 p-4 sm:p-5">
         <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan" checked={flattenToImage} onChange={(event) => setFlattenToImage(event.target.checked)} /><span><span className="block text-sm font-bold text-navy">Flatten PDF to image</span><span className="mt-1 block text-xs leading-5 text-slate-500">Rasterizes each page to remove text-layer remnants.</span></span></label>
-        <label className="block"><span className="flex items-center justify-between text-sm font-bold text-navy"><span>Keep last N exports</span><span className="text-xs font-normal text-slate-400">1–20</span></span><div className="mt-2 flex items-center gap-2"><input type="number" min={1} max={20} value={keepLastN} onChange={(event) => setKeepLastN(Math.max(1, Math.min(20, Number(event.target.value) || 1)))} className="w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-navy" /><span className="text-xs text-slate-500">saved server-side for this session</span></div></label>
+         <label className="block"><span className="flex items-center justify-between text-sm font-bold text-navy"><span>Partial mask for identifiers</span><span className="text-xs font-normal text-slate-400">optional</span></span><div className="mt-2 flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-cyan" checked={keepLastN !== null} onChange={(event) => setKeepLastN(event.target.checked ? 4 : null)} /><span className="text-xs text-slate-500">Keep last</span><input type="number" min={1} max={20} value={keepLastN ?? 4} disabled={keepLastN === null} onChange={(event) => setKeepLastN(Math.max(1, Math.min(20, Number(event.target.value) || 1)))} className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-navy disabled:bg-slate-50 disabled:text-slate-400" /><span className="text-xs text-slate-500">characters</span></div><p className="mt-1 text-[11px] leading-5 text-slate-400">The server proportionally redacts the leading part of a detected value.</p></label>
         <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-500"><FileCheck2 size={15} className="mt-0.5 shrink-0 text-cyan" />{redactedCount} area{redactedCount === 1 ? '' : 's'} marked for the review preview. Server verification checks text, bytes, metadata, and annotations.</div>
         <button className="btn-primary w-full" onClick={onExport} disabled={busy === 'export'}>{busy === 'export' ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />}{busy === 'export' ? 'Verifying export…' : 'Export redacted file'}</button>
         {exported ? <button className="btn-secondary w-full" onClick={onDownload}><ArrowDownToLine size={16} /> Download again · {exported.filename}</button> : null}
@@ -739,17 +739,30 @@ function ExportPanel({ flattenToImage, setFlattenToImage, keepLastN, setKeepLast
 }
 
 function PrivacyReport({ report, onDownloadJson, onPrint }: { report: ReportResponse; onDownloadJson: () => void; onPrint: () => void }) {
-  const categories = Object.entries(report.findings.reduce<Record<string, number>>((counts, finding) => { counts[finding.kind] = (counts[finding.kind] || 0) + 1; return counts }, {})).sort((a, b) => b[1] - a[1])
+  const detectedCount = report.detected_count || report.findings.length
+  const redactedCategories = Object.entries(report.redacted_categories || {}).sort((a, b) => b[1] - a[1])
+  const keptCategories = Object.entries(report.kept_categories || {}).sort((a, b) => b[1] - a[1])
   return (
     <section className="print-panel panel mt-6 overflow-hidden">
       <div className="no-print flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div><p className="eyebrow">Privacy report</p><h2 className="mt-1 text-xl font-bold tracking-tight text-navy">A value-free verification summary</h2></div><div className="flex flex-wrap gap-2"><button className="btn-secondary" onClick={onDownloadJson}><FileJson size={15} /> Download JSON</button><button className="btn-secondary" onClick={onPrint}><Printer size={15} /> Print view</button></div></div>
-      <div className="p-4 sm:p-6"><div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Report {report.report_id}</p><h3 className="mt-2 text-2xl font-bold tracking-tight text-navy">{report.findings.length} sensitive area{report.findings.length === 1 ? '' : 's'} detected</h3><p className="mt-1 text-sm text-slate-500">{report.pages} page{report.pages === 1 ? '' : 's'} · {report.document_type.toUpperCase()} · created {new Date(report.created_at).toLocaleString()}</p></div>{report.verification ? <VerificationBadge verification={report.verification} /> : <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600"><Info size={14} /> Export not verified yet</span>}</div>
-        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"><div><p className="eyebrow">Categories</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{categories.length ? categories.map(([kind, count]) => <div key={kind} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5"><span className="text-sm font-semibold text-navy">{humanizeKind(kind)}</span><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{count}</span></div>) : <p className="text-sm text-slate-500">No detection categories to summarize.</p>}</div></div><div><p className="eyebrow">Verification results</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{report.verification ? <><VerificationItem label="Text absent" passed={report.verification.text_absent} /><VerificationItem label="Raw bytes absent" passed={report.verification.raw_bytes_absent} /><VerificationItem label="Metadata stripped" passed={report.verification.metadata_clean} /><VerificationItem label="Annotations clean" passed={report.verification.annotations_clean} /><VerificationItem label={`OCR · ${report.verification.ocr}`} passed={report.verification.ocr !== 'failed'} /></> : <p className="text-sm text-slate-500">Export to run post-export verification.</p>}</div></div></div>
-        <div className="mt-6 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2"><NoteCard icon={<LockKeyhole size={16} />} title="Metadata stripping" body="Export removes document metadata and page features as part of the server-side sanitization pass." /><NoteCard icon={<Trash2 size={16} />} title="Deletion note" body="Delete the session when you are done. It removes the source, report, and saved exports; TTL cleanup is also enabled server-side." /></div>
-        {report.warnings.length ? <div className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs leading-5 text-amber-900"><p className="font-bold">Analysis warnings</p><ul className="mt-1 list-disc space-y-1 pl-4">{report.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}
-      </div>
-    </section>
-  )
+       <div className="p-4 sm:p-6"><div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Report {report.report_id}</p><h3 className="mt-2 text-2xl font-bold tracking-tight text-navy">{detectedCount} sensitive area{detectedCount === 1 ? '' : 's'} detected</h3><p className="mt-1 text-sm text-slate-500">{report.pages} page{report.pages === 1 ? '' : 's'} · {report.document_type.toUpperCase()} · created {new Date(report.created_at).toLocaleString()}</p></div>{report.verification ? <VerificationBadge verification={report.verification} /> : <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600"><Info size={14} /> Export not verified yet</span>}</div>
+         <div className="mt-5 grid gap-3 sm:grid-cols-3"><SummaryStat label="Detected" value={detectedCount} /><SummaryStat label="Redacted" value={report.redacted_count} tone="cyan" /><SummaryStat label="Kept" value={report.kept_count} tone="slate" /></div>
+         <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"><CategoryList title="Redacted categories" items={redactedCategories} empty="No fields were marked for redaction." /><CategoryList title="Kept categories" items={keptCategories} empty="No fields were kept in the reviewed export." /></div>
+         <div className="mt-6 grid gap-4 border-t border-slate-100 pt-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"><div><p className="eyebrow">Verification results</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{report.verification ? <><VerificationItem label="Text absent" passed={report.verification.text_absent} /><VerificationItem label="Raw bytes absent" passed={report.verification.raw_bytes_absent} /><VerificationItem label="Metadata stripped" passed={report.verification.metadata_clean} /><VerificationItem label="Annotations clean" passed={report.verification.annotations_clean} /><VerificationItem label={`OCR · ${report.verification.ocr}`} passed={report.verification.ocr !== 'failed'} /></> : <p className="text-sm text-slate-500">Export to run post-export verification.</p>}</div></div><div><p className="eyebrow">Per-field checks</p><div className="mt-3 space-y-2">{report.verification?.fields?.length ? report.verification.fields.map((field) => <div key={field.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5 text-xs"><span className="font-semibold text-navy">{humanizeKind(field.kind)}</span><span className={field.passed ? 'font-bold text-emerald-700' : 'font-bold text-rose-700'}>{field.passed ? 'passed' : 'needs review'}</span></div>) : <p className="text-sm text-slate-500">Field-level results appear after export.</p>}</div></div></div>
+         <div className="mt-6 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2"><NoteCard icon={<LockKeyhole size={16} />} title="Metadata stripping" body={report.metadata_stripped === false ? 'The export did not pass metadata verification.' : 'Export removes document metadata and page features as part of the server-side sanitization pass.'} /><NoteCard icon={<Trash2 size={16} />} title="Deletion note" body={report.deletion_notes || 'Delete the session when you are done. TTL cleanup is enabled server-side.'} /></div>
+         {report.warnings.length ? <div className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs leading-5 text-amber-900"><p className="font-bold">Analysis warnings</p><ul className="mt-1 list-disc space-y-1 pl-4">{report.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}
+       </div>
+     </section>
+   )
+}
+
+function SummaryStat({ label, value, tone = 'navy' }: { label: string; value: number; tone?: 'navy' | 'cyan' | 'slate' }) {
+  const colors = { navy: 'bg-ink text-white', cyan: 'bg-cyan/10 text-cyan-900', slate: 'bg-slate-100 text-slate-700' }
+  return <div className={`rounded-2xl px-4 py-3 ${colors[tone]}`}><p className="text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p></div>
+}
+
+function CategoryList({ title, items, empty }: { title: string; items: [string, number][]; empty: string }) {
+  return <div><p className="eyebrow">{title}</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{items.length ? items.map(([kind, count]) => <div key={kind} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5"><span className="text-sm font-semibold text-navy">{humanizeKind(kind)}</span><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{count}</span></div>) : <p className="text-sm text-slate-500">{empty}</p>}</div></div>
 }
 
 function VerificationBadge({ verification }: { verification: VerificationResponse }) {

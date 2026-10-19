@@ -46,8 +46,9 @@ The suite uses generated in-memory PDFs and does not require Tesseract, OpenCV, 
 1. `POST /api/upload` with multipart field `file`. File type is determined from magic bytes, not the client MIME type. The response contains a random `session_id`.
 2. `POST /api/analyze` with `{"session_id":"...", "use_ocr":true}`. The response is a value-free report containing finding type, page, bounding box, confidence, and source. It never returns matched PII values or extracted document text.
 3. `GET /api/report/{session_id}` reads the latest safe report.
-4. `POST /api/export` with `{"session_id":"...", "flatten_to_image":false, "keep_last_n":3}`. The response body is the redacted PDF/JPG/PNG binary. Verification status and the random export ID are returned as `X-Privashield-*` headers. A failed post-export verification prevents the binary from being returned.
-5. `DELETE /api/session/{session_id}` explicitly removes source, report, and saved export files.
+4. `GET /api/session/{session_id}/preview/{page}` renders a temporary unredacted page preview for the local review UI.
+5. `POST /api/export` with `{"session_id":"...", "findings":[{"id":"finding-0001", "page":1, "bbox":[...], "decision":"redact"}], "flatten_to_image":false, "keep_last_n":4}`. The server re-analyzes the source, resolves known IDs against its own boxes, accepts only explicit manual rectangles from the client, and applies the reviewed redaction set. `keep_last_n` is optional leading-mask behavior; `retain_exports` separately bounds saved server-side copies. The response body is the redacted PDF/JPG/PNG binary. Verification status and the random export ID are returned as `X-Privashield-*` headers. A failed post-export verification prevents the binary from being returned.
+6. `DELETE /api/session/{session_id}` explicitly removes source, report, and saved export files.
 
 `GET /api/health` returns the service/storage status. CORS is restricted by default to common local frontend origins and can be changed with `PRIVASHIELD_CORS_ORIGINS`.
 
@@ -58,7 +59,7 @@ The suite uses generated in-memory PDFs and does not require Tesseract, OpenCV, 
 - QR and face detection is best-effort and low-confidence when OpenCV is installed.
 - PDF redaction uses `add_redact_annot` and `apply_redactions`, then strips metadata, embedded files, links, annotations, and form widgets before a garbage/clean/deflate save. `flatten_to_image` creates a raster-only PDF.
 - Image redaction draws opaque boxes with Pillow and writes fresh image bytes without source EXIF.
-- Export verification checks extracted text, direct raw-byte remnants, metadata, annotations/links/forms, and OCR when available. Verification reports contain only boolean/status information and generic failure categories.
+- Export verification checks extracted text, direct raw-byte remnants, metadata, annotations/links/forms, and OCR when available. It also stores per-redacted-field pass/fail statuses without values. Verification reports contain only boolean/status information and generic failure categories.
 - Session content is never written to application logs. This service is a Phase 1 implementation; its detection coverage and document-format behavior should be evaluated against the documents and operational threat model used for deployment.
 
 ## Docker

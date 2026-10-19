@@ -35,7 +35,7 @@ The API is at `http://127.0.0.1:8000`, with interactive docs at `/docs`.
 
 ### Frontend
 
-Requires Node 20 (see `frontend/.nvmrc`). From `frontend/`:
+Requires Node 22 (see `frontend/.nvmrc`). From `frontend/`:
 
 ```bash
 npm ci && npm run dev
@@ -100,6 +100,7 @@ All routes are prefixed with `/api` and are CORS-enabled only for configured loc
 | GET | `/api/health` | Liveness and storage readiness |
 | POST | `/api/upload` | Multipart upload; validates magic bytes, size, and PDF page count |
 | POST | `/api/analyze` | Runs text extraction/OCR and returns value-free detection boxes |
+| GET | `/api/session/{session_id}/preview/{page}` | Renders a temporary page image for the review overlay |
 | POST | `/api/export` | Applies the reviewed redaction set and returns a verified binary |
 | GET | `/api/report/{session_id}` | Reads the latest value-free report |
 | DELETE | `/api/session/{session_id}` | Deletes source, report, and saved exports immediately |
@@ -114,7 +115,7 @@ Detection reports contain category, page, bounding box, confidence, and source. 
 - Common metadata leaks in PDF properties, XMP, links, annotations, form widgets, and embedded files.
 - Leaving the original source and exported copies indefinitely in the session store; TTL cleanup and an explicit delete endpoint are provided.
 - Accidental sharing of values through the analysis report; reports are intentionally value-free.
-- Obvious upload abuse: random session identifiers, magic-byte checks, a 10 MB limit, a five-page limit, bounded saved exports, safe internal filenames, and local CORS defaults.
+- Obvious upload abuse: random session identifiers, magic-byte checks, a 10 MB limit, a five-page limit, bounded saved exports, a process-local sliding-window rate limiter, safe internal filenames, and local CORS defaults.
 
 ### What it does not protect against
 

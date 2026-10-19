@@ -42,7 +42,9 @@ class DocumentContent:
 
 
 def _pixmap_image(page: fitz.Page) -> Image.Image:
-    pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+    # PDF points are 1/72 inch; 200 DPI is a practical OCR target for scans.
+    dpi_scale = 200 / 72
+    pixmap = page.get_pixmap(matrix=fitz.Matrix(dpi_scale, dpi_scale), alpha=False)
     return Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
 
 

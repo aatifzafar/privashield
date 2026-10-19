@@ -3,7 +3,8 @@ from __future__ import annotations
 import fitz
 
 from app.services.analyzer import analyze_document
-from app.services.redaction import redact_pdf, verify_export
+from app.services.detectors import Detection
+from app.services.redaction import apply_keep_last_n, redact_pdf, verify_export
 from tests.conftest import make_pdf
 
 
@@ -35,3 +36,10 @@ def test_pdf_redaction_removes_text_raw_bytes_metadata_and_annotations() -> None
     with fitz.open(stream=flattened, filetype="pdf") as document:
         assert secret not in "\n".join(page.get_text() for page in document)
     assert secret.encode() not in flattened
+
+
+def test_keep_last_n_adjusts_only_the_leading_part_of_a_detection_box() -> None:
+    finding = Detection("pan", 1, (10, 20, 110, 40), 0.9, "text", "ABCDE1234F", "finding-0001")
+    partial = apply_keep_last_n(finding, 4)
+    assert partial.bbox == (10, 20, 70.0, 40)
+    assert apply_keep_last_n(finding, None).bbox == finding.bbox

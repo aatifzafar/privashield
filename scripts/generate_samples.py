@@ -84,7 +84,7 @@ def main() -> None:
     card(
         "UNIQUE IDENTITY DEMO CARD",
         "AADHAAR-STYLE LAYOUT · NOT AN OFFICIAL DOCUMENT",
-        [("Name", "Avery Example"), ("ID", "1111 2222 3333"), ("DOB", "02/01/1990"), ("Address", "42 Privacy Street, Fiction City"), ("PIN", "110011")],
+        [("Name", "Avery Example"), ("ID", "1111 2222 3330"), ("DOB", "02/01/1990"), ("Address", "42 Privacy Street, Fiction City"), ("PIN", "110011")],
         "fake-aadhaar-style-card.png",
         (7, 122, 91),
     )

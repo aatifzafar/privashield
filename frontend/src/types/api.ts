@@ -17,6 +17,16 @@ export interface ExportRequest {
   use_ocr?: boolean
   flatten_to_image?: boolean
   keep_last_n?: number | null
+  retain_exports?: number | null
+  findings?: FindingDecision[]
+}
+
+export interface FindingDecision {
+  id: string
+  page: number
+  bbox: [number, number, number, number]
+  decision: 'keep' | 'redact'
+  manual?: boolean
 }
 
 export interface HealthResponse {
@@ -31,6 +41,8 @@ export interface FindingResponse {
   bbox: [number, number, number, number]
   confidence: number
   source: string
+  decision?: 'keep' | 'redact'
+  manual?: boolean
 }
 
 export interface OcrResponse {
@@ -48,6 +60,16 @@ export interface VerificationResponse {
   annotations_clean: boolean
   ocr: string
   failures: string[]
+  fields: FieldVerification[]
+}
+
+export interface FieldVerification {
+  id: string
+  kind: string
+  passed: boolean
+  text_absent: boolean
+  raw_bytes_absent: boolean
+  ocr: string
 }
 
 export interface ReportResponse {
@@ -60,6 +82,13 @@ export interface ReportResponse {
   warnings: string[]
   verification: VerificationResponse | null
   created_at: string
+  detected_count: number
+  redacted_count: number
+  kept_count: number
+  redacted_categories: Record<string, number>
+  kept_categories: Record<string, number>
+  metadata_stripped: boolean | null
+  deletion_notes: string
 }
 
 export interface ExportResponse {

@@ -54,6 +54,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   root: API_ROOT,
 
+  previewUrl(sessionId: string, page: number): string {
+    return `${API_ROOT}/session/${encodeURIComponent(sessionId)}/preview/${page}`
+  },
+
   health(): Promise<HealthResponse> {
     return request<HealthResponse>('/health')
   },

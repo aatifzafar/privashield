@@ -34,6 +34,44 @@ def test_upload_analyze_report_export_and_delete(tmp_path) -> None:
         assert client.get(f"/api/report/{session_id}").status_code == 404
 
 
+def test_export_honors_keep_decision_and_returns_value_free_field_results(tmp_path) -> None:
+    app = create_app(Settings(storage_dir=tmp_path, session_ttl_seconds=3600))
+    source = make_pdf("PAN: ABCDE1234F\nName: Alice Example")
+    with TestClient(app) as client:
+        upload = client.post("/api/upload", files={"file": ("input.pdf", source, "application/pdf")})
+        session_id = upload.json()["session_id"]
+        analyzed = client.post("/api/analyze", json={"session_id": session_id, "use_ocr": False}).json()
+        pan = next(item for item in analyzed["findings"] if item["kind"] == "pan")
+        export = client.post(
+            "/api/export",
+            json={
+                "session_id": session_id,
+                "use_ocr": False,
+                "findings": [{**pan, "decision": "keep"}],
+            },
+        )
+        assert export.status_code == 200
+        latest = client.get(f"/api/report/{session_id}").json()
+        assert latest["kept_count"] == 1
+        assert latest["redacted_count"] >= 1
+        assert latest["verification"]["fields"]
+        assert "ABCDE1234F" not in str(latest)
+        with fitz.open(stream=export.content, filetype="pdf") as document:
+            assert "ABCDE1234F" in "\n".join(page.get_text() for page in document)
+
+
+def test_pdf_preview_is_rendered_from_the_temporary_session(tmp_path) -> None:
+    app = create_app(Settings(storage_dir=tmp_path, session_ttl_seconds=3600))
+    source = make_pdf("Synthetic preview")
+    with TestClient(app) as client:
+        upload = client.post("/api/upload", files={"file": ("input.pdf", source, "application/pdf")})
+        session_id = upload.json()["session_id"]
+        preview = client.get(f"/api/session/{session_id}/preview/1")
+    assert preview.status_code == 200
+    assert preview.headers["content-type"].startswith("image/png")
+    assert preview.content.startswith(b"\x89PNG")
+
+
 def test_upload_rejects_content_that_does_not_match_allowed_magic_bytes(tmp_path) -> None:
     app = create_app(Settings(storage_dir=tmp_path, session_ttl_seconds=3600))
     with TestClient(app) as client:

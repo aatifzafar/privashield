@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass
+from dataclasses import replace
 from typing import Iterable
 
 import fitz
@@ -21,6 +22,7 @@ class Verification:
     annotations_clean: bool
     ocr: str
     failures: tuple[str, ...]
+    fields: tuple[dict[str, object], ...]
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -31,6 +33,7 @@ class Verification:
             "annotations_clean": self.annotations_clean,
             "ocr": self.ocr,
             "failures": list(self.failures),
+            "fields": [dict(field) for field in self.fields],
         }
 
 
@@ -94,7 +97,11 @@ def _apply_page_redactions(page: fitz.Page, findings: Iterable[Detection]) -> No
         page.add_redact_annot(rect, fill=(0, 0, 0))
     if list(page.annots() or []):
         try:
-            page.apply_redactions(images=getattr(fitz, "PDF_REDACT_IMAGE_PIXELS", 2))
+            page.apply_redactions(
+                images=getattr(fitz, "PDF_REDACT_IMAGE_PIXELS", 2),
+                graphics=getattr(fitz, "PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED", 1),
+                text=getattr(fitz, "PDF_REDACT_TEXT_REMOVE", 0),
+            )
         except TypeError:
             page.apply_redactions()
 
@@ -150,6 +157,24 @@ def redact_image(data: bytes, media_type: str, findings: Iterable[Detection]) ->
     else:
         image.save(output, format="JPEG", quality=95, optimize=True, exif=b"")
     return output.getvalue()
+
+
+def apply_keep_last_n(finding: Detection, keep_last_n: int | None) -> Detection:
+    """Return a redaction box that leaves the last N known characters visible.
+
+    Bounding boxes are word-level rather than character-level. The leading portion
+    is therefore estimated proportionally; this is intentionally surfaced as a
+    convenience, not as a precision typesetting guarantee.
+    """
+    if keep_last_n is None or keep_last_n <= 0 or not finding.value.strip():
+        return finding
+    compact = re.sub(r"\s+", "", finding.value)
+    if keep_last_n >= len(compact):
+        return finding
+    leading_ratio = (len(compact) - keep_last_n) / len(compact)
+    x0, y0, x1, y1 = finding.bbox
+    masked_x1 = x0 + max(0.0, (x1 - x0) * leading_ratio)
+    return replace(finding, bbox=(x0, y0, masked_x1, y1))
 
 
 def _normalised(value: str) -> str:
@@ -219,9 +244,30 @@ def verify_export(data: bytes, document_type: str, findings: Iterable[Detection]
             break
         ocr_status = "passed"
         ocr_text_parts.extend(word.text for word in result.words)
-    if ocr_text_parts and not all(_normalised(value) not in _normalised(" ".join(ocr_text_parts)) for value in values):
+    ocr_text = _normalised(" ".join(ocr_text_parts))
+    if ocr_text_parts and not all(_normalised(value) not in ocr_text for value in values):
         failures.append("redacted content remained in OCR output")
         ocr_status = "failed"
+
+    field_results: list[dict[str, object]] = []
+    for finding in findings_list:
+        value = finding.value.strip()
+        field_text_absent, field_raw_absent = _values_absent(text, data, [value]) if value else (True, True)
+        field_ocr = "not-run"
+        if ocr_status == "unavailable":
+            field_ocr = "unavailable"
+        elif ocr_text:
+            field_ocr = "passed" if not value or _normalised(value) not in ocr_text else "failed"
+        field_results.append(
+            {
+                "id": finding.public_id,
+                "kind": finding.kind,
+                "passed": field_text_absent and field_raw_absent and field_ocr != "failed",
+                "text_absent": field_text_absent,
+                "raw_bytes_absent": field_raw_absent,
+                "ocr": field_ocr,
+            }
+        )
 
     return Verification(
         passed=not failures,
@@ -231,4 +277,5 @@ def verify_export(data: bytes, document_type: str, findings: Iterable[Detection]
         annotations_clean=annotations_clean,
         ocr=ocr_status,
         failures=tuple(failures),
+        fields=tuple(field_results),
     )

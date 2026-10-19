@@ -61,13 +61,14 @@ The typed client in `src/lib/api.ts` matches the current backend contract:
 2. `POST /api/upload` sends the selected PDF/JPG/PNG as multipart form data.
 3. `POST /api/analyze` requests a value-free detection report, with optional OCR.
 4. `GET /api/report/{session_id}` refreshes the report after export.
-5. `POST /api/export` requests a verified redacted binary with flatten-to-image and keep-last-N options.
-6. `DELETE /api/session/{session_id}` removes the temporary session.
+5. `GET /api/session/{session_id}/preview/{page}` renders the temporary page preview used by the overlay canvas.
+6. `POST /api/export` sends the reviewed Keep/Redact decisions and manual rectangles, with flatten-to-image and optional partial masking.
+7. `DELETE /api/session/{session_id}` removes the temporary session.
 
-The UI uses a local object URL for page previews so the uploaded file can be inspected immediately. Image pages receive positioned detection overlays; PDF pages use the browser PDF preview plus a coordinate-accurate overlay map. Values are never rendered in the report UI.
+The UI uses a local object URL for image previews and a temporary backend-rendered PNG for each PDF page, so both formats receive positioned detection overlays. Values are never rendered in the report UI.
 
 ## Scope notes
 
-- The current backend export contract accepts a session and export options, but does not accept review decisions or manual bounding boxes. Keep/manual decisions are therefore reflected in the interactive review preview; the server export continues to apply the backend's analyzed findings. The API would need an additional redaction-selection payload to make those decisions authoritative in the binary.
+- The backend re-analyzes on export and treats omitted known findings as redact-by-default. Manual rectangles are accepted as explicit client geometry and are still subject to output verification; they cannot be verified against a known value.
 - The frontend surfaces low-confidence warnings and OCR availability warnings from the backend. It does not claim perfect detection, legal compliance, or coverage for every document type.
 - No frontend test runner is added for this Phase 1 standalone shell; `npm test` provides the offline TypeScript check and `npm run build` is the production verification command.

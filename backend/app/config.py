@@ -26,6 +26,7 @@ class Settings:
     keep_last_n: int = 3
     max_upload_bytes: int = 10 * 1024 * 1024
     max_pages: int = 5
+    rate_limit_per_minute: int = 60
     cors_origins: tuple[str, ...] = (
         "http://localhost:3000",
         "http://127.0.0.1:3000",
@@ -43,5 +44,6 @@ class Settings:
             storage_dir=storage_dir,
             session_ttl_seconds=_positive_int("PRIVASHIELD_SESSION_TTL_SECONDS", 3600, 60),
             keep_last_n=_positive_int("PRIVASHIELD_KEEP_LAST_N", 3, 1, 20),
+            rate_limit_per_minute=_positive_int("PRIVASHIELD_RATE_LIMIT_PER_MINUTE", 60, 1, 1000),
             cors_origins=origins,
         )
